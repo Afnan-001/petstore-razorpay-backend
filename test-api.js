@@ -199,6 +199,17 @@ const runTests = async () => {
         razorpay_order_id: 'order_123456789',
         razorpay_payment_id: 'pay_123456789',
         razorpay_signature: 'signature_hash_123',
+        customerEmail: 'customer@example.com',
+        customerName: 'Test Customer',
+        amount: 50000,
+        currency: 'INR',
+        items: [
+          { name: 'Demo Product', quantity: 1, price: 500 },
+        ],
+        notes: {
+          customer_email: 'customer@example.com',
+          customer_name: 'Test Customer',
+        },
       },
       200
     )

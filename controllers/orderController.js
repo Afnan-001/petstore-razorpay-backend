@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-const invoiceService = require('../services/invoiceService');
 const emailService = require('../services/emailService');
 
 const orders = [];
@@ -99,24 +98,42 @@ const createOrderFromPayload = async (payload) => {
 
   console.log('[order] Creating order record:', order.orderId);
 
-  const pdfBuffer = await invoiceService.generateInvoice(order);
+  let emailStatus = 'skipped';
+  let emailMessageId = null;
+  let emailError = null;
 
-  console.log('[order] Invoice generated for order:', order.orderId);
-
-  const emailResult = await emailService.sendOrderEmail({
-    email: order.customerEmail,
-    orderId: order.orderId,
-    pdfBuffer,
-    customerName: order.customerName,
-  });
-
-  console.log('[order] Confirmation email sent for order:', order.orderId);
+  try {
+    const emailResult = await emailService.sendOrderEmail({
+      id: order.orderId,
+      email: order.customerEmail,
+      customerName: order.customerName,
+      items: order.items,
+      totalAmount: order.totalAmount,
+      currency: order.currency,
+      orderDate: order.orderDate,
+    });
+    emailStatus = 'sent';
+    emailMessageId =
+      emailResult?.messageId ||
+      emailResult?.response ||
+      null;
+    console.log(
+      '[order] Confirmation email sent for order:',
+      order.orderId,
+    );
+  } catch (err) {
+    emailStatus = 'failed';
+    emailError = err.message;
+    console.error('Email failed:', err.message);
+  }
 
   const storedOrder = {
     ...order,
-    emailStatus: 'sent',
-    emailMessageId: emailResult?.id || emailResult?.data?.id || null,
-    invoiceGenerated: true,
+    emailStatus,
+    emailMessageId,
+    emailError,
+    invoiceGenerated: false,
+    billDeliveredInEmail: true,
   };
 
   orders.push(storedOrder);

@@ -57,6 +57,8 @@ const buildOrderRecord = (payload) => {
   const items = normalizeItems(payload.items || payload.notes?.items, payload.amount);
   const totalAmount = calculateTotal(items, payload.amount);
   const orderId = payload.orderId || payload.razorpayOrderId || `ORD-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+  const paymentMethod = String(payload.paymentMethod || payload.notes?.payment_method || payload.notes?.paymentMethod || 'prepaid').toLowerCase();
+  const paymentStatus = payload.paymentStatus || (paymentMethod === 'cod' ? 'pending' : 'paid');
 
   if (!isValidEmail(email)) {
     const error = new Error('A valid customer email is required to generate and send the invoice');
@@ -88,6 +90,8 @@ const buildOrderRecord = (payload) => {
     razorpayPaymentId: payload.razorpayPaymentId || payload.razorpay_payment_id || null,
     razorpaySignature: payload.razorpaySignature || payload.razorpay_signature || null,
     receipt: payload.receipt || payload.notes?.receipt || null,
+    paymentMethod,
+    paymentStatus,
     notes: payload.notes || {},
     status: 'confirmed',
   };
@@ -111,6 +115,8 @@ const createOrderFromPayload = async (payload) => {
       totalAmount: order.totalAmount,
       currency: order.currency,
       orderDate: order.orderDate,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
     });
     emailStatus = 'sent';
     emailMessageId =

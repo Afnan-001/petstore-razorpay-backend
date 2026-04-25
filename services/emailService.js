@@ -81,30 +81,38 @@ const sendOrderEmail = async (order) => {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+  const paymentMethod = String(order.paymentMethod || 'prepaid').toLowerCase();
+  const isCodOrder = paymentMethod === 'cod';
   const itemsTable = buildItemsTable(items, billingCurrency);
   const formattedTotal = formatCurrency(order.totalAmount, billingCurrency);
 
   const mailOptions = {
     from: emailUser,
     to: order.email,
-    subject: 'Order Confirmed 🐾',
+    subject: isCodOrder ? 'COD Order Confirmed 🐾' : 'Order Confirmed 🐾',
     html: `
       <div style="font-family: Arial, sans-serif; background: #f6f8fb; padding: 24px; color: #1f2937;">
         <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb;">
           <div style="background: linear-gradient(135deg, #111827, #374151); color: #ffffff; padding: 28px 32px;">
-            <h2 style="margin: 0; font-size: 26px; line-height: 1.2;">Order Confirmed</h2>
-            <p style="margin: 10px 0 0; color: #d1d5db;">Your order has been placed successfully.</p>
+            <h2 style="margin: 0; font-size: 26px; line-height: 1.2;">${isCodOrder ? 'COD Order Confirmed' : 'Order Confirmed'}</h2>
+            <p style="margin: 10px 0 0; color: #d1d5db;">
+              ${isCodOrder ? 'Your order has been placed successfully and will be paid on delivery.' : 'Your order has been placed successfully.'}
+            </p>
           </div>
           <div style="padding: 32px;">
             <p style="margin: 0 0 16px; font-size: 16px;">Hi ${escapeHtml(order.customerName || 'there')},</p>
             <p style="margin: 0 0 16px; font-size: 15px; line-height: 1.7; color: #4b5563;">
-              Thank you for shopping with us. Your payment was received successfully.
+              ${isCodOrder
+                ? 'Thank you for shopping with us. Your cash on delivery order has been received successfully.'
+                : 'Thank you for shopping with us. Your payment was received successfully.'}
             </p>
             <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 24px 0;">
               <p style="margin: 0; font-size: 14px; color: #6b7280;">Order ID</p>
               <p style="margin: 6px 0 0; font-size: 18px; font-weight: 700; color: #111827;">${escapeHtml(order.id)}</p>
               <p style="margin: 12px 0 0; font-size: 14px; color: #6b7280;">Order Date</p>
               <p style="margin: 6px 0 0; font-size: 15px; color: #111827;">${escapeHtml(formattedOrderDate)}</p>
+              <p style="margin: 12px 0 0; font-size: 14px; color: #6b7280;">Payment Method</p>
+              <p style="margin: 6px 0 0; font-size: 15px; color: #111827;">${escapeHtml(isCodOrder ? 'Cash on Delivery' : 'Prepaid')}</p>
             </div>
             <table style="width: 100%; border-collapse: collapse; margin: 24px 0; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
               <thead>

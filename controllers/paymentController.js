@@ -103,16 +103,54 @@ const verifyPayment = async (req, res) => {
       receipt,
     } = req.body;
 
+    const normalizedOrderId = String(razorpay_order_id).trim();
+    const normalizedPaymentId = String(razorpay_payment_id).trim();
+    const normalizedSignature = String(razorpay_signature).trim();
+    const normalizedReceipt = String(receipt || notes.receipt || normalizedOrderId).trim();
+
+    console.log('[verify-payment] Received verification payload:', {
+      razorpay_order_id: normalizedOrderId,
+      razorpay_payment_id: normalizedPaymentId,
+      razorpay_signature: normalizedSignature,
+      receipt: normalizedReceipt,
+    });
+
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .update(`${normalizedOrderId}|${normalizedPaymentId}`)
       .digest('hex');
 
-    if (expectedSignature !== razorpay_signature) {
-      console.error('[verify-payment] Signature mismatch for order:', razorpay_order_id);
+    console.log('[verify-payment] Generated signature:', expectedSignature);
+
+    const receivedSignatureBuffer = Buffer.from(normalizedSignature, 'utf8');
+    const expectedSignatureBuffer = Buffer.from(expectedSignature, 'utf8');
+    const signaturesMatch =
+      receivedSignatureBuffer.length === expectedSignatureBuffer.length &&
+      crypto.timingSafeEqual(expectedSignatureBuffer, receivedSignatureBuffer);
+
+    if (!signaturesMatch) {
+      console.error('[verify-payment] Signature mismatch for order:', normalizedOrderId);
       return res.status(400).json({
         success: false,
         error: 'Invalid payment signature',
+      });
+    }
+
+    const existingOrder = orderController.findOrderByPaymentReference({
+      razorpayOrderId: normalizedOrderId,
+      razorpayPaymentId: normalizedPaymentId,
+      receipt: normalizedReceipt,
+    });
+
+    if (existingOrder) {
+      console.log('[verify-payment] Order already verified. Returning existing record for:', normalizedOrderId);
+      return res.status(200).json({
+        success: true,
+        message: 'Payment already verified and order already created',
+        backendOrderId: existingOrder.orderId,
+        orderId: normalizedOrderId,
+        paymentId: normalizedPaymentId,
+        order: existingOrder,
       });
     }
 
@@ -122,22 +160,24 @@ const verifyPayment = async (req, res) => {
       items: Array.isArray(items) && items.length ? items : notes.items,
       amount: typeof amount === 'number' ? amount : notes.amount,
       currency,
-      receipt: receipt || notes.receipt || razorpay_order_id,
-      razorpayOrderId: razorpay_order_id,
-      razorpayPaymentId: razorpay_payment_id,
-      razorpaySignature: razorpay_signature,
+      orderId: normalizedReceipt,
+      receipt: normalizedReceipt,
+      razorpayOrderId: normalizedOrderId,
+      razorpayPaymentId: normalizedPaymentId,
+      razorpaySignature: normalizedSignature,
       notes,
     };
 
-    console.log('[verify-payment] Payment verified. Creating order record for:', razorpay_order_id);
+    console.log('[verify-payment] Payment verified. Creating order record for:', normalizedOrderId);
 
     const createdOrder = await orderController.createOrderFromPayload(orderPayload);
 
     return res.status(200).json({
       success: true,
       message: 'Payment verified and order created',
-      orderId: razorpay_order_id,
-      paymentId: razorpay_payment_id,
+      backendOrderId: createdOrder.orderId,
+      orderId: normalizedOrderId,
+      paymentId: normalizedPaymentId,
       order: createdOrder,
     });
   } catch (error) {

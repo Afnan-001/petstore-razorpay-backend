@@ -24,10 +24,13 @@ const invoiceTemplate = (orderData) => {
   const items = Array.isArray(orderData.items) ? orderData.items : [];
   const totalAmount = Number(orderData.totalAmount || 0);
   const currency = orderData.currency || 'INR';
+  const paymentMethod = String(orderData.paymentMethod || 'prepaid').toLowerCase();
+  const paymentStatus = String(orderData.paymentStatus || (paymentMethod === 'cod' ? 'pending' : 'paid')).toLowerCase();
   const orderDate = new Date(orderData.orderDate || Date.now()).toLocaleString('en-IN', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+  const badgeLabel = paymentStatus === 'paid' ? 'Paid' : paymentMethod === 'cod' ? 'Pay On Delivery' : paymentStatus;
 
   const rows = items
     .map((item, index) => {
@@ -194,7 +197,7 @@ const invoiceTemplate = (orderData) => {
               <p>Professional order summary and payment receipt</p>
             </div>
             <div class="meta" style="text-align:right;">
-              <div class="badge">Paid</div>
+              <div class="badge">${escapeHtml(badgeLabel)}</div>
               <p style="margin-top:10px;">Invoice Date: ${escapeHtml(orderDate)}</p>
               <p>Order ID: ${escapeHtml(orderData.orderId)}</p>
             </div>
@@ -208,8 +211,8 @@ const invoiceTemplate = (orderData) => {
             </div>
             <div class="card">
               <div class="label">Payment Details</div>
-              <div class="value">${escapeHtml(orderData.currency || 'INR')} Transaction</div>
-              <div style="margin-top:8px; color:#6b7280; font-size:13px;">Status: Confirmed</div>
+              <div class="value">${escapeHtml(paymentMethod === 'cod' ? 'Cash on Delivery' : `${orderData.currency || 'INR'} Transaction`)}</div>
+              <div style="margin-top:8px; color:#6b7280; font-size:13px;">Status: ${escapeHtml(paymentStatus)}</div>
             </div>
           </div>
 

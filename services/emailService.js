@@ -1,15 +1,22 @@
 const nodemailer = require('nodemailer');
+const { generateInvoice } = require('./invoiceService');
 
 const emailUser = process.env.EMAIL_USER;
 const emailPass = process.env.EMAIL_PASS;
 
-const transporter = nodemailer.createTransport({
+// Check if email is configured
+const isEmailConfigured = () => {
+  return emailUser && emailPass && emailUser.trim() && emailPass.trim();
+};
+
+// Create transporter only if email is configured
+const transporter = isEmailConfigured() ? nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: emailUser,
     pass: emailPass,
   },
-});
+}) : null;
 
 const escapeHtml = (value) =>
   String(value ?? '')
@@ -37,13 +44,13 @@ const buildItemsTable = (items, currency) =>
   items
     .map((item, index) => {
       const quantity = Number(item.quantity || 1);
-      const price = Number(item.price || 0);
+      const price = Number(item.price || item.productPrice || 0);
       const lineTotal = quantity * price;
 
       return `
         <tr>
           <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${index + 1}</td>
-          <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(item.name)}</td>
+          <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(item.name || item.productName)}</td>
           <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${quantity}</td>
           <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${formatCurrency(price, currency)}</td>
           <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${formatCurrency(lineTotal, currency)}</td>
@@ -53,8 +60,20 @@ const buildItemsTable = (items, currency) =>
     .join('');
 
 const sendOrderEmail = async (order) => {
-  if (!emailUser || !emailPass) {
-    const error = new Error('EMAIL_USER and EMAIL_PASS must be configured');
+  if (!isEmailConfigured()) {
+    console.warn('[email] Email configuration missing (EMAIL_USER or EMAIL_PASS not set). Skipping email send.');
+    console.warn('[email] To enable emails, set EMAIL_USER and EMAIL_PASS environment variables.');
+    return {
+      messageId: null,
+      skipped: true,
+      reason: 'Email configuration not available',
+      invoiceGenerated: false,
+      invoiceAttached: false,
+    };
+  }
+
+  if (!transporter) {
+    const error = new Error('Email service is not available - transporter not initialized');
     error.statusCode = 500;
     throw error;
   }
@@ -85,11 +104,40 @@ const sendOrderEmail = async (order) => {
   const isCodOrder = paymentMethod === 'cod';
   const itemsTable = buildItemsTable(items, billingCurrency);
   const formattedTotal = formatCurrency(order.totalAmount, billingCurrency);
+  const invoiceFileName = `invoice-${String(order.id || 'order').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+
+  let invoiceAttachment = null;
+  try {
+    const invoiceBuffer = await generateInvoice({
+      orderId: order.id,
+      customerName: order.customerName,
+      customerEmail: order.email,
+      items: items.map((item) => ({
+        ...item,
+        name: item.name || item.productName,
+        price: Number(item.price || item.productPrice || 0),
+      })),
+      totalAmount: order.totalAmount,
+      currency: billingCurrency,
+      orderDate: order.orderDate,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      deliveryAddress: order.deliveryAddress,
+    });
+    invoiceAttachment = {
+      filename: invoiceFileName,
+      content: invoiceBuffer,
+      contentType: 'application/pdf',
+    };
+  } catch (error) {
+    console.error('[email] Failed to generate invoice attachment:', error.message);
+  }
 
   const mailOptions = {
     from: emailUser,
     to: order.email,
-    subject: isCodOrder ? 'COD Order Confirmed 🐾' : 'Order Confirmed 🐾',
+    subject: isCodOrder ? 'COD Order Confirmed' : 'Order Confirmed',
+    attachments: invoiceAttachment == null ? [] : [invoiceAttachment],
     html: `
       <div style="font-family: Arial, sans-serif; background: #f6f8fb; padding: 24px; color: #1f2937;">
         <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb;">
@@ -105,6 +153,11 @@ const sendOrderEmail = async (order) => {
               ${isCodOrder
                 ? 'Thank you for shopping with us. Your cash on delivery order has been received successfully.'
                 : 'Thank you for shopping with us. Your payment was received successfully.'}
+            </p>
+            <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.7; color: #4b5563;">
+              ${invoiceAttachment == null
+                ? 'Your order summary is included below.'
+                : 'Your invoice PDF is attached to this email for your records.'}
             </p>
             <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 24px 0;">
               <p style="margin: 0; font-size: 14px; color: #6b7280;">Order ID</p>
@@ -145,11 +198,21 @@ const sendOrderEmail = async (order) => {
     `,
   };
 
-  const result = await transporter.sendMail(mailOptions);
-  console.log('[email] Nodemailer response:', JSON.stringify(result));
-  return result;
+  try {
+    const result = await transporter.sendMail(mailOptions);
+    console.log('[email] Email sent successfully for order:', order.id);
+    return {
+      ...result,
+      invoiceGenerated: invoiceAttachment != null,
+      invoiceAttached: invoiceAttachment != null,
+    };
+  } catch (error) {
+    console.error('[email] Failed to send email:', error.message);
+    throw error;
+  }
 };
 
 module.exports = {
   sendOrderEmail,
+  isEmailConfigured,
 };

@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const paymentRoutes = require('./routes/paymentRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Initialize Express app
 const app = express();
@@ -27,6 +28,7 @@ app.get('/health', (req, res) => {
 
 app.use('/', paymentRoutes);
 app.use('/orders', orderRoutes);
+app.use('/admin', adminRoutes);
 
 // 404 handler
 app.use((req, res) => {
